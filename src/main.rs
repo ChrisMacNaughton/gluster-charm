@@ -854,8 +854,33 @@ fn server_changed() -> Result<(), String> {
             setup_samba(&volume_name)?;
         }
 
+        match get_local_disks() {
+            Ok(disks) => {
+                let _ = juju::relation_set("disks", &disks.join(","));
+            }
+            Err(e) => {
+                let _ = juju::log(&format!("No disks found: {}", e), Some(LogLevel::Info));
+            }
+        }
+
         return Ok(());
     }
+}
+
+fn get_local_disks() -> Result<Vec<String>, juju::JujuError> {
+    juju::storage_list().map(|l| {
+        l.lines()
+            .map(|s| s.to_string())
+            .map(|brick| juju::storage_get(brick.trim()))
+            .filter_map(|s| s.ok())
+            .map(|p| if let Some(path) = PathBuf::from(p.trim()).file_name() {
+                Some(format!("/mnt/{}", path.to_string_lossy()))
+            } else {
+                None
+            })
+            .filter_map(|s| s)
+            .collect()
+    })
 }
 
 fn server_removed() -> Result<(), String> {
