@@ -163,6 +163,13 @@ enum Status {
     FailedToStart(String),
 }
 
+#[derive(Debug)]
+struct Host {
+    peer: Option<gluster::Peer>,
+    ip: String,
+    disks: Vec<String>,
+}
+
 fn get_config_value(name: &str) -> Result<String, String> {
     match juju::config_get(&name.to_string()) {
         Ok(v) => Ok(v),
@@ -384,6 +391,37 @@ fn brick_and_server_cartesian_product(peers: &Vec<gluster::Peer>,
         product.push(brick);
     }
     return product;
+}
+
+fn get_remote_hosts() -> Vec<Host> {
+    let mut host_list = vec![];
+    if let Some((relation, hosts)) = remote_hosts() {
+        for host in hosts {
+            if let Ok(ip) = juju::relation_get_by_id("private-address", &relation, &host)
+                .map(|s| s.trim().to_string()) {
+                if let Ok(disks) = juju::relation_get_by_id("disks", &relation, &host)
+                    .map(|s| s.trim().split(",").map(|s| s.to_string()).collect()) {
+                    host_list.push(Host {
+                        peer: None,
+                        disks: disks,
+                        ip: ip,
+                    });
+                }
+            }
+        }
+    }
+    host_list
+}
+
+fn remote_hosts() -> Option<(juju::Relation, Vec<juju::Relation>)> {
+    if let Ok(relations) = juju::relation_ids_by_identifier("server") {
+        for relation in relations {
+            if let Ok(hosts) = juju::relation_list_by_id(&relation) {
+                return Some((relation, hosts));
+            }
+        }
+    }
+    return None;
 }
 
 // This function will take into account the replication level and
